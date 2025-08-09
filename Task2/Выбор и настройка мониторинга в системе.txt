@@ -1,0 +1,56 @@
+Мотивация:
+Проблемы, которые решит внедрение мониторинга:
+1. Клиенты жалуются на просрочки, API-партнёры не получают данные - снизит потерю заказов;
+2. Операторы не могут работать из-за низкой производительности MES - позволит найти и исправить причину;
+3. Непонятно, где именно возникают задержки и потеря данных (RabbitMQ, БД, API) - позволит найти неочевидные узкие места;
+4. Проблемы обнаруживаются только по жалобам клиентов - позволит реализовать реактивное, а не проактивное управление.
+
+Выбор подхода к мониторингу:
+Будем использовать комбинированный подход:
+1. API и пользовательские сценарии - «Четыре золотых сигнала» (Latency, Traffic, Errors, Saturation).
+2. Инфраструктура (CPU, память, очереди) - USE (Utilization, Saturation, Errors).
+3. RabbitMQ и асинхронные процессы - RED (Rate, Errors, Duration).
+
+Используемые метрики:
+1. API и бизнес-метрики
+- Response time (latency) for MES API	Главная боль клиентов – долгий расчёт стоимости.	endpoint="/calculate_price", status_code
+-Number of HTTP 500 for MES API	Ошибки API для партнёров – причина потери контрактов.	endpoint, client_id (для идентификации проблемных партнёров)
+-Number of requests (RPS) for MES API	Нагрузка на API растёт – нужно масштабирование.	endpoint, `source="B2B"	"B2C"`
+-Time from SUBMITTED to PRICE_CALCULATED	SLA для клиентов.	`order_type="custom"	"standard"`
+2. Очереди (RabbitMQ)
+-Number of dead-letter-exchange letters	Потерянные заказы из-за сбоев.	queue_name, error_type
+-Number of messages in flight	Перегрузка очереди → задержки.	queue_name
+3. Инфраструктура
+-CPU % for MES API	Проверка нагрузки на расчёт стоимости.	instance
+-Memory Utilisation for MES db instance	БД – узкое место при росте заказов.	`database="orders"	"models"`
+-Number of connections for MES db instance	Перегрузка БД → тормозит дашборд операторов.	`user_type="operator"	"api"`
+4. Дополнительные метрики
+-Size of MES db instance – рост данных → пора шардировать.
+-Kb transferred (received) for MES API – большие 3D-модели нагружают сеть.
+
+План действий:
+1. Развёртывание мониторинга
+Используемый стек: 
+-Prometheus + Grafana (метрики).
+-ELK (логи).
+
+Инструментация:
+-Настроить exporters для RabbitMQ (rabbitmq_exporter);
+-Настроить exporters для БД (postgres_exporter);
+-Настроить exporters для приложений (Spring Boot Actuator, .NET Metrics).
+
+Дашборды:
+- MES (время расчёта стоимости, ошибки API);
+- RabbitMQ (dead letters, очередь сообщений);
+- БД (connections, query latency).
+
+2. Интеграция с алертами
+Alertmanager для уведомлений в Slack/Telegram.
+
+Пороговые значения (см. ниже).
+
+Этап 3. Автоматизация реакций
+Автомасштабирование MES при высокой нагрузке (например, CPU >80% 5 мин).
+
+Тикет в Jira при >10 dead letters за час.
+
