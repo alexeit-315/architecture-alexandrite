@@ -1,0 +1,52 @@
+title Order status changing Sequence Diagram
+
+top to bottom direction
+
+@startuml Order status changing
+actor Operator
+participant "MES Frontend" as Frontend
+participant "MES API" as API
+participant "MES Database" as DB
+participant "Cache (Redis)" as Cache
+participant "RabbitMQ" as MQ
+
+Operator -> Frontend: Изменение статуса заказа #123
+activate Frontend
+
+Frontend -> API: PATCH /orders/123 {status}
+activate API
+
+API -> DB: UPDATE orders SET status=...
+activate DB
+DB --> API: Успешное обновление
+deactivate DB
+
+API -> Cache: del order:123
+activate Cache
+Cache --> API: OK
+deactivate Cache
+
+API -> Cache: del orders:page:*
+activate Cache
+Cache --> API: OK
+deactivate Cache
+
+API -> MQ: publish OrderUpdated(orderId=123)
+activate MQ
+MQ --> API: ACK
+deactivate MQ
+
+API --> Frontend: 200 OK
+deactivate API
+
+Frontend --> Operator: Статус обновлен
+deactivate Frontend
+
+... Системные события ...
+
+MQ -> Cache: Инвалидация кеша
+activate Cache
+Cache -> Cache: Удаление всех ключей с order:123*
+Cache -> Cache: Удаление всех ключей с orders:list:*
+deactivate Cache
+@enduml

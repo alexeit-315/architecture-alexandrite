@@ -1,0 +1,37 @@
+title Order list reading Sequence Diagram
+
+top to bottom direction
+
+@startuml Order list reading
+actor Client
+participant "MES API" as API
+participant "Cache (Redis)" as Cache
+participant "MES Database" as DB
+
+Client -> API: GET /orders?page=1
+activate API
+
+API -> Cache: get orders:page:1
+activate Cache
+
+alt Кеш существует
+    Cache --> API: Данные из кеша
+    deactivate Cache
+else Кеш отсутствует
+    Cache --> API: null
+    deactivate Cache
+
+    API -> DB: SELECT * FROM orders...
+    activate DB
+    DB --> API: Результаты запроса
+    deactivate DB
+
+    API -> Cache: setex orders:page:1 60 <данные>
+    activate Cache
+    Cache --> API: OK
+    deactivate Cache
+end
+
+API --> Client: 200 OK (данные заказов)
+deactivate API
+@enduml
